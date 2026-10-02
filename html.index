@@ -1486,4 +1486,480 @@ function toggleWishlist(id){
     wishlist.splice(idx, 1);
     showToast('تم الحذف من المفضلة');
   }
- 
+  renderProducts();
+  renderWishlist();
+  updateCounts();
+}
+
+function renderWishlist(){
+  const count = wishlist.length;
+  wishHeadCount.textContent = count ? `(${count} منتج)` : '';
+
+  if (!count){
+    wishBody.innerHTML = `
+      <div class="cart-empty">
+        <div class="icon">♡</div>
+        <p>قائمة المفضلة فاضية<br>احفظي القطع اللي تحبينها هنا</p>
+        <a href="#shop" class="btn btn-primary btn-sm" data-close="wishlistDrawer">تصفّحي المتجر</a>
+      </div>`;
+    return;
+  }
+
+  wishBody.innerHTML = wishlist.map(id => {
+    const p = findProduct(id);
+    if (!p) return '';
+    return `
+      <div class="wish-item">
+        <div class="wish-thumb" style="background:${p.bg}">${p.emoji}</div>
+        <div class="wish-info">
+          <h4>${p.name}</h4>
+          <span class="price">${fmt(p.price)} ر.س</span>
+        </div>
+        <div class="wish-actions">
+          <button class="btn btn-primary btn-sm" data-add="${p.id}">أضيفي</button>
+          <button class="remove" data-wish="${p.id}">حذف</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ================= العرض السريع ================= */
+function openQuickView(id){
+  const p = findProduct(id);
+  if (!p) return;
+  currentProduct = p;
+  currentSize = p.sizes ? p.sizes[Math.floor(p.sizes.length/2)] : null;
+  currentQty = 1;
+  trackRecent(id);
+
+  quickViewBox.innerHTML = `
+    <button class="modal-close" data-close="quickView" aria-label="إغلاق">✕</button>
+    <div class="qv-grid">
+      <div class="qv-visual" style="background:${p.bg}">
+        ${p.badge ? `<span class="badge ${p.badge === 'جديد' ? 'new' : p.badge === 'خصم' ? 'hot' : ''}">${p.badge}</span>` : ''}
+        <span>${p.emoji}</span>
+      </div>
+      <div class="qv-info">
+        <span class="p-cat">${p.cat}</span>
+        <h2>${p.name}</h2>
+        <span class="p-rate">${stars(p.rate)}<b style="color:var(--muted);font-weight:500;font-size:.76rem;margin-inline-start:.35rem">(${fmt(p.sold)} مبيع)</b></span>
+        <span class="price">${fmt(p.price)} ر.س${p.old ? `<s>${fmt(p.old)}</s>` : ''}</span>
+        <p class="qv-desc">${p.desc}</p>
+
+        ${p.sizes ? `
+          <div class="qv-label"><span>اختاري المقاس</span><button type="button" id="sizeGuide">دليل المقاسات</button></div>
+          <div class="sizes" id="sizeButtons">
+            ${p.sizes.map(s => `<button class="size-btn ${s === currentSize ? 'active' : ''}" data-size="${s}">${s}</button>`).join('')}
+          </div>
+        ` : ''}
+
+        <div class="qv-label">الكمية</div>
+        <div class="qv-qty-row">
+          <div class="qty">
+            <button data-qvqty="-1" aria-label="ناقص">−</button>
+            <span id="qvQty">1</span>
+            <button data-qvqty="1" aria-label="زائد">+</button>
+          </div>
+        </div>
+
+        <div class="qv-actions">
+          <button class="btn btn-primary" id="qvAdd">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" style="width:15px;height:15px;stroke-width:2.2"><path d="M12 5v14M5 12h14"/></svg>
+            أضيفي للسلة
+          </button>
+          <button class="btn btn-ghost" data-wish-qv="${p.id}" aria-label="المفضلة">
+            <svg viewBox="0 0 24 24" fill="${wishlist.includes(p.id) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-linejoin="round" style="width:15px;height:15px;stroke-width:2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  quickView.classList.add('open');
+  openOverlay();
+}
+
+/* ================= البحث ================= */
+function renderSearch(q){
+  const term = q.trim();
+  if (!term){
+    searchResults.innerHTML = `<div class="search-tip">ابحثي بالاسم أو القسم — جربي <b>فستان</b>، <b>حقيبة</b>، أو <b>مكياج</b>.</div>`;
+    return;
+  }
+  const results = products.filter(p => p.name.includes(term) || p.cat.includes(term));
+  if (!results.length){
+    searchResults.innerHTML = `<div class="search-empty"><span>🔍</span><p>لا توجد نتائج لـ «${term}»</p></div>`;
+    return;
+  }
+  searchResults.innerHTML = results.map(p => `
+    <div class="search-result" data-quickview="${p.id}" data-close-search>
+      <div class="thumb-sm" style="background:${p.bg}">${p.emoji}</div>
+      <div><h4>${p.name}</h4><span class="cat">${p.cat}</span></div>
+      <span class="price">${fmt(p.price)} ر.س</span>
+    </div>
+  `).join('');
+}
+
+/* ================= الأسئلة الشائعة ================= */
+$('faqList').innerHTML = faqs.map((f, i) => `
+  <div class="faq-item reveal" data-faq="${i}">
+    <button class="faq-q"><span>${f.q}</span><span class="faq-icon">+</span></button>
+    <div class="faq-a"><p>${f.a}</p></div>
+  </div>
+`).join('');
+
+$('faqList').addEventListener('click', e => {
+  const item = e.target.closest('.faq-item');
+  if (!item) return;
+  const wasOpen = item.classList.contains('open');
+  document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+  if (!wasOpen) item.classList.add('open');
+});
+
+/* ================= آراء العميلات ================= */
+const quotesEl = $('quotes');
+const dotsEl = $('dots');
+let currentQuote = 0;
+
+function renderQuotes(){
+  if (window.innerWidth <= 960){
+    quotesEl.innerHTML = testimonials.map((t, i) => `
+      <div class="quote ${i === 0 ? 'active' : ''}" data-quote="${i}">
+        <div class="stars">${stars(t.stars)}</div>
+        <p>${t.text}</p>
+        <div class="who">
+          <div class="avatar" style="background:${t.bg}">${t.initial}</div>
+          <div><strong>${t.name}</strong><span>${t.role}</span></div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    const visible = [testimonials[(currentQuote) % testimonials.length], testimonials[(currentQuote + 1) % testimonials.length], testimonials[(currentQuote + 2) % testimonials.length]];
+    quotesEl.innerHTML = visible.map(t => `
+      <div class="quote active">
+        <div class="stars">${stars(t.stars)}</div>
+        <p>${t.text}</p>
+        <div class="who">
+          <div class="avatar" style="background:${t.bg}">${t.initial}</div>
+          <div><strong>${t.name}</strong><span>${t.role}</span></div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+dotsEl.innerHTML = testimonials.map((_, i) =>
+  `<button class="dot ${i === 0 ? 'active' : ''}" data-dot="${i}" aria-label="رأي ${i+1}"></button>`
+).join('');
+
+function showQuote(i){
+  currentQuote = i;
+  document.querySelectorAll('.quote').forEach(q => q.classList.toggle('active', false));
+  const activeQ = document.querySelector(`.quote[data-quote="${i}"]`);
+  if (activeQ) activeQ.classList.add('active');
+  renderQuotes();
+  document.querySelectorAll('.dot').forEach((d, idx) => d.classList.toggle('active', idx === i));
+}
+dotsEl.addEventListener('click', e => {
+  const d = e.target.closest('.dot');
+  if (d) showQuote(+d.dataset.dot);
+});
+renderQuotes();
+setInterval(() => showQuote((currentQuote + 1) % testimonials.length), 6000);
+window.addEventListener('resize', renderQuotes);
+
+/* ================= إنستغرام ================= */
+$('instaGrid').innerHTML = [
+  { emoji:'👗', bg:'linear-gradient(150deg,#f5e2d6,#dbb89e)' },
+  { emoji:'👚', bg:'linear-gradient(150deg,#f0dbdc,#cfa5a6)' },
+  { emoji:'👜', bg:'linear-gradient(150deg,#f0e2c8,#d4b884)' },
+  { emoji:'👠', bg:'linear-gradient(150deg,#e8d0d6,#c49aa3)' },
+  { emoji:'💄', bg:'linear-gradient(150deg,#dfe6d5,#a8b48f)' },
+  { emoji:'🎀', bg:'linear-gradient(150deg,#f0e2c8,#c9a86a)' }
+].map(x => `<div class="insta-item" style="background:${x.bg}">${x.emoji}<span class="insta-icon">📷</span></div>`).join('');
+
+/* ================= الهيرو سلايدر ================= */
+let currentSlide = 0;
+const slideEmojis = ['👗', '🛍', '💄'];
+const heroSlides = document.querySelectorAll('.hero-slide');
+const heroDots = document.querySelectorAll('.hero-dot');
+
+function showSlide(i){
+  currentSlide = i;
+  heroSlides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+  heroDots.forEach((d, idx) => d.classList.toggle('active', idx === i));
+  const emojiEl = document.getElementById('heroEmoji');
+  emojiEl.textContent = slideEmojis[i];
+  emojiEl.style.animation = 'none';
+  setTimeout(() => emojiEl.style.animation = '', 50);
+}
+
+heroDots.forEach(d => d.addEventListener('click', () => showSlide(+d.dataset.hero)));
+setInterval(() => showSlide((currentSlide + 1) % heroSlides.length), 7000);
+
+/* ================= العداد ================= */
+const offerEnd = Date.now() + (2 * 24 * 60 * 60 * 1000) + (11 * 60 * 60 * 1000) + (42 * 60 * 1000);
+
+function updateTimer(){
+  const diff = Math.max(0, offerEnd - Date.now());
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  const ar = n => n.toLocaleString('ar-EG', { minimumIntegerDigits: 2, useGrouping:false });
+
+  ['d-d','d-h','d-m','d-s'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = ar([d,h,m,s][i]);
+  });
+
+  ['t-h','t-m','t-s'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = ar([h,m,s][i]);
+  });
+}
+updateTimer();
+setInterval(updateTimer, 1000);
+
+/* ================= الأحداث ================= */
+// التبويبات
+$('tabs').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  activeTab = tab.dataset.tab;
+  renderProducts();
+});
+
+// الفلاتر
+filtersEl.addEventListener('click', e => {
+  const btn = e.target.closest('.filter');
+  if (!btn) return;
+  filtersEl.querySelectorAll('.filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeCat = btn.dataset.cat;
+  renderProducts();
+});
+
+// الترتيب
+sortEl.addEventListener('change', () => {
+  activeSort = sortEl.value;
+  renderProducts();
+});
+
+// الأقسام
+document.querySelectorAll('.cat[data-cat]').forEach(cat => {
+  cat.addEventListener('click', () => {
+    const target = cat.dataset.cat;
+    const btn = [...filtersEl.querySelectorAll('.filter')].find(b => b.dataset.cat === target);
+    if (btn){
+      filtersEl.querySelectorAll('.filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeCat = target;
+      renderProducts();
+      document.getElementById('shop').scrollIntoView({ behavior:'smooth' });
+    }
+  });
+});
+
+// أحداث عامة
+document.addEventListener('click', e => {
+  const addBtn = e.target.closest('[data-add]');
+  const wishBtn = e.target.closest('[data-wish]:not([data-wish-qv])');
+  const qvBtn = e.target.closest('[data-quickview]');
+  const closeBtn = e.target.closest('[data-close]');
+  const qtyBtn = e.target.closest('[data-qty]');
+  const removeBtn = e.target.closest('[data-remove]');
+  const qvQtyBtn = e.target.closest('[data-qvqty]');
+  const sizeBtn = e.target.closest('.size-btn');
+  const tierBtn = e.target.closest('[data-tier]');
+  const closeSearchEl = e.target.closest('[data-close-search]');
+  const recentItem = e.target.closest('.recent-item');
+
+  if (addBtn){
+    e.preventDefault();
+    addToCart(+addBtn.dataset.add);
+  }
+
+  if (wishBtn){
+    e.preventDefault();
+    toggleWishlist(+wishBtn.dataset.wish);
+  }
+
+  if (qvBtn && !wishBtn && !addBtn){
+    if (closeSearchEl) searchOverlay.classList.remove('open');
+    openQuickView(+qvBtn.dataset.quickview);
+  }
+
+  if (recentItem){
+    openQuickView(+recentItem.dataset.quickview);
+  }
+
+  if (closeBtn){
+    const id = closeBtn.dataset.close;
+    if (id === 'cartDrawer' || id === 'wishlistDrawer'){
+      closeAllDrawers();
+      closeOverlay();
+    } else if (id === 'quickView'){
+      quickView.classList.remove('open');
+      closeOverlay();
+    }
+  }
+
+  if (qtyBtn) updateQty(+qtyBtn.dataset.qty, qtyBtn.dataset.size, +qtyBtn.dataset.delta);
+  if (removeBtn && removeBtn.dataset.remove) removeFromCart(+removeBtn.dataset.remove, removeBtn.dataset.size);
+
+  if (qvQtyBtn){
+    currentQty = Math.max(1, currentQty + (+qvQtyBtn.dataset.qvqty));
+    document.getElementById('qvQty').textContent = currentQty;
+  }
+
+  if (sizeBtn){
+    currentSize = sizeBtn.dataset.size;
+    document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === currentSize));
+  }
+
+  if (tierBtn){
+    showToast(`🎉 طلبك للانضمام لمستوى ${tierBtn.dataset.tier} تم استلامه!`);
+  }
+});
+
+// المودال
+quickViewBox.addEventListener('click', e => {
+  if (e.target.closest('#qvAdd') && currentProduct){
+    addToCart(currentProduct.id, currentSize, currentQty);
+    quickView.classList.remove('open');
+    closeOverlay();
+  }
+  if (e.target.closest('[data-wish-qv]')){
+    toggleWishlist(+e.target.closest('[data-wish-qv]').dataset.wishQv);
+    openQuickView(currentProduct.id);
+  }
+  if (e.target.closest('#sizeGuide')){
+    showToast('📏 دليل المقاسات: XS=36، S=38، M=40، L=42، XL=44');
+  }
+});
+
+// أزرار الهيدر
+$('cartBtn').addEventListener('click', () => openDrawer(cartDrawer));
+$('wishlistBtn').addEventListener('click', () => openDrawer(wishlistDrawer));
+
+// البحث
+$('searchBtn').addEventListener('click', () => {
+  searchOverlay.classList.add('open');
+  document.body.classList.add('no-scroll');
+  setTimeout(() => searchInput.focus(), 100);
+});
+$('closeSearch').addEventListener('click', () => {
+  searchOverlay.classList.remove('open');
+  document.body.classList.remove('no-scroll');
+  searchInput.value = '';
+  renderSearch('');
+});
+searchInput.addEventListener('input', e => renderSearch(e.target.value));
+
+// قائمة الجوال
+const burger = $('burger');
+const nav = $('nav');
+burger.addEventListener('click', () => {
+  const open = nav.classList.toggle('open');
+  burger.innerHTML = open
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" style="width:19px;height:19px;stroke-width:1.8"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+    : burgerIcon();
+});
+nav.addEventListener('click', e => {
+  if (e.target.tagName === 'A'){
+    nav.classList.remove('open');
+    burger.innerHTML = burgerIcon();
+  }
+});
+
+// الطبقة الخلفية
+overlay.addEventListener('click', closeAll);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+
+// النشرة
+$('subForm').addEventListener('submit', e => {
+  e.preventDefault();
+  e.target.reset();
+  showToast('🎉 أهلاً بكِ في عائلة حلا! تفقّدي بريدك');
+});
+
+// زر الأعلى
+window.addEventListener('scroll', () => {
+  toTop.classList.toggle('show', window.scrollY > 500);
+});
+toTop.addEventListener('click', () => window.scrollTo({ top:0, behavior:'smooth' }));
+
+// المشاهدات الأخيرة
+$('recentClose').addEventListener('click', () => recentBar.classList.remove('show'));
+
+// المحادثة
+const chatWindow = $('chatWindow');
+const chatBody = $('chatBody');
+const chatInput = $('chatInput');
+
+$('chatBtn').addEventListener('click', () => {
+  chatWindow.classList.toggle('open');
+});
+$('chatClose').addEventListener('click', () => chatWindow.classList.remove('open'));
+
+function sendChat(){
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatBody.insertAdjacentHTML('beforeend', `<div class="msg me">${text}</div>`);
+  chatInput.value = '';
+  chatBody.scrollTop = chatBody.scrollHeight;
+
+  setTimeout(() => {
+    const replies = [
+      'شكراً لتواصلك! 🌸 كيف نقدر نساعدك؟',
+      'أكيد، راح نرد عليك خلال دقائق. تفضلي اسألي.',
+      'وصلتنا رسالتك! هل تحبين نتكلم عن منتج معيّن؟',
+      'يسعدنا خدمتك 💗 في أي شي تقدرين نساعدك فيه؟'
+    ];
+    const reply = replies[Math.floor(Math.random() * replies.length)];
+    chatBody.insertAdjacentHTML('beforeend', `<div class="msg">${reply}</div>`);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }, 900);
+}
+$('chatSend').addEventListener('click', sendChat);
+chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendChat(); });
+
+// الكوكيز
+const cookieBar = $('cookieBar');
+if (!localStorage.getItem('hala_cookie')){
+  setTimeout(() => cookieBar.classList.add('show'), 2000);
+}
+$('cookieAccept').addEventListener('click', () => {
+  localStorage.setItem('hala_cookie', 'accepted');
+  cookieBar.classList.remove('show');
+  showToast('شكراً! تم حفظ تفضيلاتك');
+});
+$('cookieDecline').addEventListener('click', () => {
+  localStorage.setItem('hala_cookie', 'declined');
+  cookieBar.classList.remove('show');
+});
+
+// الظهور التدريجي
+const io = new IntersectionObserver(entries => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting){
+      setTimeout(() => entry.target.classList.add('in'), i * 60);
+      io.unobserve(entry.target);
+    }
+  });
+}, { threshold:.12, rootMargin:'0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+/* ================= التشغيل ================= */
+renderProducts();
+renderCart();
+renderWishlist();
+updateCounts();
+renderRecent();
+</script>
+</body>
+</html>
